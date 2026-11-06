@@ -1,0 +1,112 @@
+service: fsm-repuestos
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 20
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole   s
+  environment:
+    TABLA_REPUESTOS: ${self:custom.tablaRepuestos}
+    TABLA_FACTURAS: ${self:custom.tablaFacturas}
+    BUCKET_FACTURAS: ${self:custom.bucketFacturas}
+    VALIDADOR_TOKEN: ${self:custom.validadorToken}
+    TARIFA_HORA: '50'         
+
+custom:
+  tablaRepuestos: fsm-${sls:stage}-repuestos
+  tablaFacturas: fsm-${sls:stage}-facturas
+  bucketFacturas: fsm-${sls:stage}-facturas-${aws:accountId}
+  validadorToken: fsm-${sls:stage}-validar-token                                                # MS-A
+  colaFacturacionArn: arn:aws:sqs:${aws:region}:${aws:accountId}:fsm-${sls:stage}-cola-facturacion  # MS-C
+
+functions:
+  crearRepuesto:
+    handler: src/repuestos.crear
+    events:
+      - http: { path: repuestos, method: post, cors: true, integration: lambda }
+  listarRepuestos:
+    handler: src/repuestos.listar
+    events:
+      - http: { path: repuestos, method: get, cors: true, integration: lambda }
+  obtenerRepuesto:
+    handler: src/repuestos.obtener
+    events:
+      - http: { path: 'repuestos/{repuesto_id}', method: get, cors: true, integration: lambda }
+  actualizarRepuesto:
+    handler: src/repuestos.actualizar
+    events:
+      - http: { path: 'repuestos/{repuesto_id}', method: put, cors: true, integration: lambda }
+  eliminarRepuesto:
+    handler: src/repuestos.eliminar
+    events:
+      - http: { path: 'repuestos/{repuesto_id}', method: delete, cors: true, integration: lambda }
+
+  listarFacturas:
+    handler: src/facturas.listar
+    events:
+      - http: { path: facturas, method: get, cors: true, integration: lambda }
+  obtenerFactura:
+    handler: src/facturas.obtener
+    events:
+      - http: { path: 'facturas/{factura_id}', method: get, cors: true, integration: lambda }
+  pdfFactura:
+    handler: src/facturas.pdf
+    events:
+      - http: { path: 'facturas/{factura_id}/pdf', method: get, cors: true, integration: lambda }
+
+  generarFactura:
+    handler: src/eventos.generar_factura
+    events:
+      - sqs:
+          arn: ${self:custom.colaFacturacionArn}
+          batchSize: 10
+
+resources:
+  Resources:
+    TablaRepuestos:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablaRepuestos}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - { AttributeName: tenant_id, AttributeType: S }
+          - { AttributeName: repuesto_id, AttributeType: S }
+        KeySchema:
+          - { AttributeName: tenant_id, KeyType: HASH }
+          - { AttributeName: repuesto_id, KeyType: RANGE }
+
+    TablaFacturas:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablaFacturas}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - { AttributeName: tenant_id, AttributeType: S }
+          - { AttributeName: factura_id, AttributeType: S }
+        KeySchema:
+          - { AttributeName: tenant_id, KeyType: HASH }
+          - { AttributeName: factura_id, KeyType: RANGE }
+
+    BucketFacturas:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketFacturas}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins: ['*']
+              AllowedMethods: [GET]
+              AllowedHeaders: ['*']
+              MaxAge: 3000
+
+package:
+  patterns:
+    - '!tests/**'
+    - '!scripts/**'
+    - '!README.md'
+    - '!.gitignore'
+    - '!.pytest_cache/**'
