@@ -9,7 +9,7 @@ provider:
   memorySize: 256
   timeout: 20
   iam:
-    role: arn:aws:iam::${aws:accountId}:role/LabRole   s
+    role: arn:aws:iam::${aws:accountId}:role/LabRole   
   environment:
     TABLA_REPUESTOS: ${self:custom.tablaRepuestos}
     TABLA_FACTURAS: ${self:custom.tablaFacturas}
